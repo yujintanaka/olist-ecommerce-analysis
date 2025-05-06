@@ -120,5 +120,62 @@ GROUP BY delivery_time
 ORDER BY delivery_time;
 
 
--- 5. Total subsequent order value for each order based on customer_unique_i
+-- Dollar value of review score.
+
+-- Time until next purchase based on review
+
+SELECT
+o.order_id,
+r.review_score,
+r.review_creation_date,
+(
+    SELECT MIN(next_o.order_purchase_timestamp)
+    FROM orders next_o
+    WHERE next_o.customer_id = c.customer_id
+    AND next_o.order_purchase_timestamp > r.review_creation_date
+) AS next_purchase_date
+FROM orders o
+JOIN reviews r ON o.order_id = r.order_id
+JOIN customers c ON o.customer_id = c.customer_id
+LIMIT 10;
+--GROUP BY r.review_score
+
+
+WITH ReviewsWithTimestamps AS (
+    SELECT
+        o.order_id,
+        c.customer_unique_id,
+        r.review_score,
+        r.review_creation_date,
+        o.order_purchase_timestamp
+    FROM orders o
+    JOIN reviews r ON o.order_id = r.order_id
+    JOIN customers c ON o.customer_id = c.customer_id
+),
+CustomerPurchases AS (
+    SELECT 
+        o.order_purchase_timestamp,
+        c.customer_unique_id
+    FROM orders o
+    JOIN customers c ON o.customer_id = c.customer_id
+),
+next_purchase AS (SELECT
+    rwt.order_id,
+    rwt.review_score,
+    MIN(cp.order_purchase_timestamp) - rwt.review_creation_date AS next_purchase_interval
+FROM ReviewsWithTimestamps rwt
+LEFT JOIN CustomerPurchases cp ON 
+    rwt.customer_unique_id = cp.customer_unique_id AND
+    cp.order_purchase_timestamp > rwt.review_creation_date
+GROUP BY 
+    rwt.order_id,
+    rwt.review_score,
+    rwt.review_creation_date
+)
+SELECT
+np.review_score,
+AVG(np.next_purchase_interval) AS avg_time_to_next_purchase,
+COUNT(*) AS made_additional_purchase
+FROM next_purchase np
+GROUP BY np.review_score
 
