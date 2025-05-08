@@ -58,6 +58,19 @@ GROUP BY delivery_time
 ORDER BY delivery_time;
 -- Yes, product weight is a factor
 
+-- Does weight cause lateness?
+SELECT
+EXTRACT(DAY FROM (o.order_delivered_customer_date - order_estimated_delivery_date)) AS delivery_performance,
+AVG(p.product_weight_g),
+COUNT(*) AS number_of_orders
+FROM orders o
+LEFT JOIN order_items oi ON o.order_id = oi.order_id
+LEFT JOIN products p ON oi.product_id = p.product_id
+GROUP BY delivery_performance
+ORDER BY delivery_performance;
+
+-- I would like to see distributions first, better to do this on python.
+
 
 
 --In order to improve delivery times, we have to find anomalies based on weight and distance.
@@ -125,7 +138,6 @@ SELECT
     EXTRACT( DAY FROM AVG(order_delivered_carrier_date - order_approved_at)) || ' days' AS approval_to_carrier,
     EXTRACT( DAY FROM AVG(order_delivered_customer_date - order_delivered_carrier_date)) ||' days' AS carrier_to_customer,
     AVG(AGE(order_delivered_customer_date, order_purchase_timestamp)) AS avg_delivery_time
-
 FROM orders
 WHERE order_status = 'delivered'
     AND order_delivered_customer_date > order_estimated_delivery_date
@@ -134,5 +146,81 @@ WHERE order_status = 'delivered'
     AND order_approved_at  IS NOT NULL
 GROUP BY delivery_time
 ORDER BY avg_delivery_time;
+
+
+-- Shipping limit date
+-- How many orders are meeting the shipping limit?
+SELECT
+    AVG(oi.shipping_limit_date - o.order_delivered_carrier_date)
+FROM orders o
+JOIN order_items oi ON o.order_id = oi.order_id
+WHERE order_status = 'delivered'
+    AND order_delivered_customer_date > order_estimated_delivery_date
+    AND order_delivered_customer_date  IS NOT NULL
+    AND order_delivered_carrier_date  IS NOT NULL
+    AND order_approved_at  IS NOT NULL
+LIMIT 10;
+-- even late deliveries on average are recieved by the carrier before the shipping limit
+-- For best improvements, I would suggest using the best carrier
+
+-- People who pay extra for shipping and have it late must be pissed.. How often does that happen and is it significant?
+
+-- shipping speed by freight value, controlled by distance and weight
+-- seems like a job for python. Build a python view, export as CSV and move onto linear regression
+-- Dollar value of delivery is also a python thing.
+
+
+-- SO FAR, the factors that influence delivery speed is:
+-- weight, distance, product type - proxy for weight, seller issues, freight cost
+
+-- Expand on finding sellers that are causing issues: does a subset of sellers repeatedly make late?
+
+
+SELECT
+    CASE
+        WHEN AGE(o.order_delivered_customer_date, o.order_purchase_timestamp) < INTERVAL '1 day' THEN '0-1 days'
+        WHEN AGE(o.order_delivered_customer_date, o.order_purchase_timestamp) < INTERVAL '3 days' THEN '1-3 days'
+        WHEN AGE(o.order_delivered_customer_date, o.order_purchase_timestamp) < INTERVAL '7 days' THEN '3-7 days'
+        WHEN AGE(o.order_delivered_customer_date, o.order_purchase_timestamp) < INTERVAL '14 days' THEN '7-14 days'
+        WHEN AGE(o.order_delivered_customer_date, o.order_purchase_timestamp) < INTERVAL '30 days' THEN '14-30 days'
+        ELSE '30+ days'
+    END AS delivery_time,
+    AVG(oi.freight_value)
+FROM orders o
+JOIN order_items oi ON o.order_id = oi.order_id
+WHERE order_status = 'delivered'
+    AND order_delivered_customer_date > order_estimated_delivery_date
+    AND order_delivered_customer_date  IS NOT NULL
+    AND order_delivered_carrier_date  IS NOT NULL
+    AND order_approved_at  IS NOT NULL
+GROUP BY delivery_time;
+--Average freight costs are all similar, and if anything the later deliveries are more expensive
+
+-- Freight costs when NOT late
+SELECT
+    CASE
+        WHEN AGE(o.order_delivered_customer_date, o.order_purchase_timestamp) < INTERVAL '1 day' THEN '0-1 days'
+        WHEN AGE(o.order_delivered_customer_date, o.order_purchase_timestamp) < INTERVAL '3 days' THEN '1-3 days'
+        WHEN AGE(o.order_delivered_customer_date, o.order_purchase_timestamp) < INTERVAL '7 days' THEN '3-7 days'
+        WHEN AGE(o.order_delivered_customer_date, o.order_purchase_timestamp) < INTERVAL '14 days' THEN '7-14 days'
+        WHEN AGE(o.order_delivered_customer_date, o.order_purchase_timestamp) < INTERVAL '30 days' THEN '14-30 days'
+        ELSE '30+ days'
+    END AS delivery_time,
+    AVG(oi.freight_value)
+FROM orders o
+JOIN order_items oi ON o.order_id = oi.order_id
+WHERE order_status = 'delivered'
+    AND order_delivered_customer_date < order_estimated_delivery_date
+    AND order_delivered_customer_date  IS NOT NULL
+    AND order_delivered_carrier_date  IS NOT NULL
+    AND order_approved_at  IS NOT NULL
+GROUP BY delivery_time;
+
+--segmentation analysis for bad sellers
+
+
+
+
+
 
 

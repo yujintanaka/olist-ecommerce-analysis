@@ -141,3 +141,155 @@ LIMIT 10;
 
 
 
+-- checking if payment_value is total payment value or payment of an installment
+SELECT 
+    p.order_id,
+    SUM(oi.price) AS total_order_price,
+    SUM(p.payment_value) AS total_payment_value,
+    MAX(p.payment_installments) AS payment_installments,
+    COUNT(DISTINCT p.payment_type) AS payment_methods
+FROM 
+    order_items oi
+JOIN 
+    payments p ON oi.order_id = p.order_id
+GROUP BY 
+    p.order_id
+HAVING 
+    SUM(p.payment_value) > 0
+ORDER BY 
+    total_order_price DESC
+LIMIT 20;
+
+
+SELECT 
+    p.order_id,
+    SUM(oi.price) AS total_item_price,
+    SUM(oi.freight_value) AS total_freight,
+    SUM(oi.price + oi.freight_value) AS total_order_cost,
+    SUM(p.payment_value) AS total_payment_value,
+    MAX(p.payment_installments) AS payment_installments,
+    COUNT(DISTINCT p.payment_type) AS payment_methods
+FROM 
+    order_items oi
+JOIN 
+    payments p ON oi.order_id = p.order_id
+GROUP BY 
+    p.order_id
+HAVING 
+    SUM(p.payment_value) > 0
+ORDER BY 
+    total_order_cost DESC
+LIMIT 20;
+
+SELECT 
+    o.order_id,
+    o.order_status,
+    SUM(oi.price) AS total_item_price,
+    SUM(oi.freight_value) AS total_freight,
+    SUM(oi.price + oi.freight_value) AS total_order_cost,
+    SUM(p.payment_value) AS total_payment_value,
+    MAX(p.payment_installments) AS payment_installments,
+    COUNT(DISTINCT p.payment_type) AS payment_methods
+FROM 
+    orders o
+JOIN 
+    order_items oi ON o.order_id = oi.order_id
+JOIN 
+    payments p ON o.order_id = p.order_id
+WHERE 
+    o.order_status = 'delivered'
+GROUP BY 
+    o.order_id, o.order_status
+HAVING 
+    SUM(p.payment_value) < SUM(oi.price + oi.freight_value) * 0.8  -- large underpayment
+ORDER BY 
+    total_order_cost DESC
+LIMIT 10;
+
+SELECT 
+    order_id,
+    payment_type,
+    payment_sequential,
+    payment_installments,
+    payment_value
+FROM 
+    payments
+WHERE 
+    order_id = '4bfcba9e084f46c8e3cb49b0fa6e6159';
+
+SELECT 
+    order_id,
+    order_item_id,
+    price,
+    freight_value
+FROM 
+    order_items
+WHERE 
+    order_id = '4bfcba9e084f46c8e3cb49b0fa6e6159';
+
+
+WITH item_totals AS (
+    SELECT 
+        order_id,
+        SUM(price) AS total_item_price,
+        SUM(freight_value) AS total_freight
+    FROM order_items
+    GROUP BY order_id
+)
+SELECT 
+    o.order_id,
+    o.order_status,
+    it.total_item_price,
+    it.total_freight,
+    (it.total_item_price + it.total_freight) AS total_order_cost,
+    SUM(p.payment_value) AS total_payment_value,
+    MAX(p.payment_installments) AS payment_installments,
+    COUNT(DISTINCT p.payment_type) AS payment_methods
+FROM 
+    orders o
+JOIN 
+    item_totals it ON o.order_id = it.order_id
+JOIN 
+    payments p ON o.order_id = p.order_id
+WHERE 
+    o.order_status = 'delivered'
+GROUP BY 
+    o.order_id, o.order_status, it.total_item_price, it.total_freight
+HAVING 
+    ABS(SUM(p.payment_value) - (it.total_item_price + it.total_freight)) > 50
+ORDER BY 
+    total_order_cost DESC
+LIMIT 10;
+
+WITH item_totals AS (
+    SELECT 
+        order_id,
+        SUM(price) AS total_item_price,
+        SUM(freight_value) AS total_freight
+    FROM order_items
+    GROUP BY order_id
+)
+SELECT 
+    o.order_id,
+    o.order_status,
+    it.total_item_price,
+    it.total_freight,
+    (it.total_item_price + it.total_freight) AS total_order_cost,
+    SUM(p.payment_value) AS total_payment_value,
+    MAX(p.payment_installments) AS payment_installments,
+    COUNT(DISTINCT p.payment_type) AS payment_methods
+FROM 
+    orders o
+JOIN 
+    item_totals it ON o.order_id = it.order_id
+JOIN 
+    payments p ON o.order_id = p.order_id
+WHERE 
+    o.order_status = 'delivered'
+GROUP BY 
+    o.order_id, o.order_status, it.total_item_price, it.total_freight
+ORDER BY 
+    total_order_cost DESC
+LIMIT 10;
+-- payment value is for the total installments, but for only 1 payment method
+-- if we want total payment we must aggregate by order id
