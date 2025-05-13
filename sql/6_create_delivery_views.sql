@@ -9,15 +9,17 @@ WITH order_sequence AS (SELECT
 FROM orders o
 LEFT JOIN customers c ON o.customer_id = c.customer_id
 GROUP BY order_id, c.customer_unique_id, o.order_purchase_timestamp
-)
-SELECT
+),
+current_order AS (SELECT
 -- each order is tied to 1 shipment, but can have multiple products
     o.order_id,
+    o.customer_id,
     o.order_purchase_timestamp,
     o.order_status,
     AVG(r.review_score) AS average_review_score,
     -- aggregates over multiple payment methods
     SUM(p.payment_value) AS total_payment_value,
+    SUM(p.payment_value) - SUM(oi.freight_value) AS payment_less_shipping,
     EXTRACT(DAY FROM (o.order_delivered_customer_date - o.order_purchase_timestamp)) AS delivery_time,
     EXTRACT(DAY FROM (o.order_delivered_customer_date - order_estimated_delivery_date)) AS delay_time,
     CASE
@@ -26,18 +28,106 @@ SELECT
         WHEN AGE(o.order_delivered_customer_date, o.order_estimated_delivery_date) < INTERVAL '10 days' THEN 'Late'
         WHEN AGE(o.order_delivered_customer_date, o.order_estimated_delivery_date) >= INTERVAL '10 days' THEN 'Very Late'
         ELSE 'Not Delivered'
-    END AS delivery_performance,
-    os.nth_order
+    END AS delivery_performance
 FROM orders o
 LEFT JOIN reviews r ON o.order_id = r.order_id
 LEFT JOIN payments p ON o.order_id = p.order_id
 LEFT JOIN customers c ON o.customer_id = c.customer_id
-LEFT JOIN order_sequence os ON o.order_id = os.order_id
-GROUP BY o.order_id, os.nth_order
+LEFT JOIN order_items oi ON o.order_id = oi.order_id
+GROUP BY o.order_id
 ORDER BY order_purchase_timestamp
--- 2. Aggregate on Unique Customer ID
--- For each unique customer ID: need the following:
--- First order info
+)
+SELECT
+    co.order_id,
+    c.customer_unique_id,
+    co.order_purchase_timestamp,
+    co.order_status,
+    co.average_review_score,
+    co.total_payment_value,
+    co.payment_less_shipping,
+    co.delivery_time,
+    co.delay_time,
+    co.delivery_performance,
+    os.nth_order
+FROM current_order co
+LEFT JOIN order_sequence os ON co.order_id = os.order_id
+LEFT JOIN customers c ON co.customer_id = c.customer_id
+
+-- Want the review score and the effect of purchase frequency, so it should be
+-- displayed review score + time until next purchase
+-- For each product, review score for each review timestamp.
+-- For each order, review score at time of purchase
+-- Want in the end a table, for each review score the average time to next purchase.
+-- Need to take the average review score between two purchases
+-- Want data point only for re-purchases
+
+WITH times AS (SELECT
+COUNT(oi.product_id) as times_order,
+AVG(r.review_score) as review_score
+from order_items oi
+LEFT JOIN reviews r ON r.order_id = oi.order_id
+GROUP BY product_id
+)
+SELECT times_order, COUNT(*),
+AVG(review_score)
+FROM times
+GROUP BY times_order
+ORDER BY times_order
+--review scores are extremely flat across all purchase frequencies.
+-- This likely means the review scores are not displayed,
+-- or it is not a big factor for people making the purchases.
+-- we must look towards individual customer behavior?
+-- perhaps review scores do not translate to extra revenue? or is there a threshold at which
+-- bad reviews will kill a product?
+
+--Next query: per products in each review group, 0-1, 1-2, 2-3, 3-4, 4-5, what is the average revenue?
+-- total revenue / number of products in the the review group
+-- need first to get product, average review, total revenue
+
+WITH per_product_score_revenue AS (SELECT
+COUNT(oi.order_id) as num_orders,
+oi.product_id,
+CASE
+    WHEN AVG(r.review_score) IS NULL THEN 'null'
+    WHEN AVG(r.review_score) <1 THEN '0-1'
+    WHEN AVG(r.review_score) <2 THEN '1-2'
+    WHEN AVG(r.review_score) <3 THEN '2-3'
+    WHEN AVG(r.review_score) <4 THEN '3-4'
+    WHEN AVG(r.review_score) <=5 THEN '4-5'
+    ELSE 'other'
+END AS review_bucket,
+SUM(p.payment_value) as total_revenue
+FROM order_items oi
+LEFT JOIN payments p ON oi.order_id = p.order_id
+LEFT JOIN reviews r ON oi.order_id = r.order_id
+GROUP BY oi.product_id
+HAVING COUNT(r.review_id) > 5
+)
+SELECT
+ppsr.review_bucket,
+SUM(ppsr.num_orders) as number_orders,
+COUNT(ppsr.product_id) as number_products,
+AVG(ppsr.total_revenue) as avg_revenue
+FROM per_product_score_revenue ppsr
+GROUP BY ppsr.review_bucket
+ORDER BY review_bucket
+-- This gives us the nonsensical result that
+--lower review scores give us more revenue.
+-- possible explanation
+-- Heavier items cost more, they take longer to deliver,
+-- longer delivery = lower review score.
+
+-- As we investigated, lower review != lower purchases
+
+-- To get the pure effect of customer satisfaction on future sales
+-- can only be found using customer data over time, which we do not have.
+
+-- as a summary -- delivery definitely has an effect on reviews
+-- However, we cannot quanity the effect it has on future sales or customer behavior
+-- due to the limited timescope of the data,
+-- as well as reviews most likely not swaying other customers.
+
+
 
 
 
@@ -46,6 +136,8 @@ ORDER BY order_purchase_timestamp
 SELECT
 o.order_id AS order_id,
 oi.seller_id AS seller_id,
+s.seller_state,
+s.seller_city,
 o.order_status AS order_status,
 o.order_purchase_timestamp AS purchase_date,
 o.order_approved_at AS approved_date,
@@ -54,6 +146,7 @@ o.order_delivered_customer_date AS customer_date,
 o.order_estimated_delivery_date AS estimate_date,
 oi.shipping_limit_date AS shipping_limit_date,
 oi.freight_value AS freight_value,
+p.product_weight_g,
 oi.price AS price,
 (
     6371 * -- Earth's radius in kilometers
@@ -80,4 +173,18 @@ LEFT JOIN products p ON oi.product_id = p.product_id
 LEFT JOIN sellers s ON oi.seller_id = s.seller_id
 LEFT JOIN geolocation gc ON c.customer_zip_code_prefix = gc.geolocation_zip_code_prefix
 LEFT JOIN geolocation gs ON s.seller_zip_code_prefix = gs.geolocation_zip_code_prefix
-LIMIT 50;
+
+
+
+-- How can we improve? potential solutions and the impact
+-- Potential solutions: If there are bad sellers, see where they are erring,
+-- perhaps we can tell them to change carriers.
+
+-- We can give an estimate a few days later than recommended.
+-- However, we need to investigate the impact this will have on revenue
+ -- Given the same weight, distance and price, how does purchase frequency change based on the given estimate?
+ -- The best solution would be just to AB test and get data. This will not require long-term data.
+
+
+-- Since we did not quantify the benefit of faster delivery, we cannot make recommendations 
+

@@ -36,15 +36,6 @@ GROUP BY delivery_performance
 ORDER BY delivery_performance;
 
 
-SELECT
-    o.order_id,
-    o.customer_id,
-    c.customer_unique_id
-FROM orders o
-LEFT JOIN customers c ON o.customer_id = c.customer_id
-LIMIT 10;
-
-
 -- 4. Analyzing subsequent order values per customer
 WITH ordered_purchases AS (
     SELECT 
