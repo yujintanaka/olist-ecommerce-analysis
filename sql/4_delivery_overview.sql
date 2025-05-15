@@ -8,9 +8,15 @@ FROM orders
 WHERE order_status = 'delivered'
 
 -- Delivery time as a histogram
-SELECT
+SELECT    
     CASE
-        WHEN AGE(order_delivered_customer_date, order_purchase_timestamp) < INTERVAL '1 day' THEN '0-1 days'
+        WHEN AGE(order_delivered_customer_date, order_purchase_timestamp) < INTERVAL '3 days' THEN 1
+        WHEN AGE(order_delivered_customer_date, order_purchase_timestamp) < INTERVAL '7 days' THEN 2
+        WHEN AGE(order_delivered_customer_date, order_purchase_timestamp) < INTERVAL '14 days' THEN 3
+        WHEN AGE(order_delivered_customer_date, order_purchase_timestamp) < INTERVAL '30 days' THEN 4
+        ELSE 5
+    END AS index,
+    CASE
         WHEN AGE(order_delivered_customer_date, order_purchase_timestamp) < INTERVAL '3 days' THEN '1-3 days'
         WHEN AGE(order_delivered_customer_date, order_purchase_timestamp) < INTERVAL '7 days' THEN '3-7 days'
         WHEN AGE(order_delivered_customer_date, order_purchase_timestamp) < INTERVAL '14 days' THEN '7-14 days'
@@ -20,8 +26,9 @@ SELECT
     COUNT(*) AS count
 FROM orders
 WHERE order_status = 'delivered'
-GROUP BY delivery_time
-ORDER BY count;
+GROUP BY delivery_time, index
+ORDER BY index;
+
 
 -- Delivery performance as a histogram
 SELECT
@@ -60,6 +67,8 @@ WHERE order_status = 'delivered'
     AND order_delivered_customer_date > order_estimated_delivery_date
 GROUP BY late_delivery_time
 ORDER BY count DESC;
+
+
 
 -- On time and Late delivery rate with counts
 SELECT

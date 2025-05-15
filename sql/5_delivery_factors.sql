@@ -123,6 +123,7 @@ WHERE order_status = 'delivered'
 GROUP BY delivery_time
 ORDER BY avg_delivery_time;
 -- insight: bottlneck is mostly at the carrier level. Improving the seller efficiency at most gains few days
+-- Seller efficiency gains as a percentage.
 
 SELECT
     CASE
@@ -218,6 +219,46 @@ GROUP BY delivery_time;
 
 --segmentation analysis for bad sellers
 
+
+-- Monthly on-time delivery rate with sellers
+SELECT
+    DATE_TRUNC('month', o.order_purchase_timestamp) AS purchase_month,
+    COUNT(DISTINCT oi.seller_id) AS unqiue_sellers,
+    COUNT(*) FILTER (WHERE o.order_delivered_customer_date <= o.order_estimated_delivery_date) * 100.0 / COUNT(*) AS on_time_delivery_rate
+FROM orders o
+LEFT JOIN order_items oi ON o.order_id = oi.order_id
+WHERE order_status = 'delivered'
+    AND order_delivered_customer_date IS NOT NULL
+    AND order_estimated_delivery_date IS NOT NULL
+GROUP BY purchase_month
+HAVING COUNT(*)> 50
+ORDER BY purchase_month;
+
+
+-- Monthly on-time delivery rate 
+SELECT
+    DATE_TRUNC('month', o.order_purchase_timestamp) AS purchase_month,
+    COUNT(*) FILTER (WHERE o.order_delivered_customer_date <= o.order_estimated_delivery_date) * 100.0 / COUNT(*) AS on_time_delivery_rate
+FROM orders o
+WHERE order_status = 'delivered'
+    AND order_delivered_customer_date IS NOT NULL
+    AND order_estimated_delivery_date IS NOT NULL
+GROUP BY purchase_month
+HAVING COUNT(*)> 50
+ORDER BY purchase_month;
+
+-- Number of orders per month
+SELECT
+    DATE_TRUNC('month', order_purchase_timestamp) AS order_month,
+    COUNT(*) AS number_of_orders
+FROM orders
+WHERE order_status = 'delivered'
+    AND order_purchase_timestamp IS NOT NULL
+GROUP BY order_month
+ORDER BY order_month;
+
+
+-- See monthly averages for: weight, distance, 
 
 
 
