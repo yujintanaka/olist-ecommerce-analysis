@@ -188,3 +188,46 @@ LEFT JOIN geolocation gs ON s.seller_zip_code_prefix = gs.geolocation_zip_code_p
 
 -- Since we did not quantify the benefit of faster delivery, we cannot make recommendations 
 
+
+
+
+
+-- Freight Class view
+
+SELECT
+p.product_weight_g,
+p.product_length_cm,
+p.product_height_cm,
+p.product_width_cm,
+(
+    6371 * -- Earth's radius in kilometers
+    2 * ASIN(
+        SQRT(
+            POWER(SIN(RADIANS(gs.geolocation_lat - gc.geolocation_lat) / 2), 2) +
+            COS(RADIANS(gc.geolocation_lat)) * 
+            COS(RADIANS(gs.geolocation_lat)) * 
+            POWER(SIN(RADIANS(gs.geolocation_lng - gc.geolocation_lng) / 2), 2)
+        )
+    )
+) AS distance,
+oi.freight_value AS freight_value,
+CASE
+    WHEN AGE(o.order_delivered_customer_date, o.order_estimated_delivery_date) > INTERVAL '0 day' THEN 1
+    ELSE 0
+END AS late
+FROM orders o
+LEFT JOIN customers c ON o.customer_id = c.customer_id
+LEFT JOIN order_items oi ON o.order_id = oi.order_id
+LEFT JOIN products p ON oi.product_id = p.product_id
+LEFT JOIN sellers s ON oi.seller_id = s.seller_id
+LEFT JOIN geolocation gc ON c.customer_zip_code_prefix = gc.geolocation_zip_code_prefix
+LEFT JOIN geolocation gs ON s.seller_zip_code_prefix = gs.geolocation_zip_code_prefix
+
+
+
+
+
+
+
+
+

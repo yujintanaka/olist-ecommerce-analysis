@@ -95,3 +95,6 @@ COUNT(*) - COUNT(order_estimated_delivery_date) AS null_estimate
 FROM orders
 GROUP BY order_status
 ORDER BY count;
+-- Note: unavailable items still get approved, but the carrier does not recieve.
+-- Therefore, if we want to look into products that were previously marked unavailable,
+-- we will have to look for very long times between approval and carrier
