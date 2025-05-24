@@ -546,6 +546,40 @@ WHERE seller_id = '88460e8ebdecbfecb5f9601833981930'
 ORDER BY o.order_purchase_timestamp
 
 
+SELECT
+c.customer_state,
+COUNT(*) FILTER (WHERE o.order_delivered_customer_date <= o.order_estimated_delivery_date) * 100.0 / COUNT(*) AS on_time_delivery_rate,
+COUNT(*)
+FROM orders o
+LEFT JOIN order_items oi ON oi.order_id = o.order_id
+LEFT JOIN products p ON p.product_id = oi.product_id
+LEFT JOIN customers c ON o.customer_id = c.customer_id
+LEFT JOIN sellers s ON s.seller_id = oi.seller_id
+WHERE s.seller_id = '1f50f920176fa81dab994f9023523100'
+    AND order_status = 'delivered'
+    AND order_delivered_customer_date IS NOT NULL
+    AND order_purchase_timestamp IS NOT NULL
+    AND DATE_TRUNC('month', o.order_purchase_timestamp) = '2018-03-01'
+GROUP BY c.customer_state
+ORDER BY on_time_delivery_rate
+
+
+SELECT
+c.customer_state,
+COUNT(*) FILTER (WHERE o.order_delivered_customer_date <= o.order_estimated_delivery_date) * 100.0 / COUNT(*) AS on_time_delivery_rate,
+COUNT(*)
+FROM orders o
+LEFT JOIN order_items oi ON oi.order_id = o.order_id
+LEFT JOIN products p ON p.product_id = oi.product_id
+LEFT JOIN customers c ON o.customer_id = c.customer_id
+LEFT JOIN sellers s ON s.seller_id = oi.seller_id
+WHERE s.seller_id = '7c67e1448b00f6e969d365cea6b010ab'
+    AND order_status = 'delivered'
+    AND order_delivered_customer_date IS NOT NULL
+    AND order_purchase_timestamp IS NOT NULL
+    AND DATE_TRUNC('month', o.order_purchase_timestamp) = '2018-03-01'
+GROUP BY c.customer_state
+ORDER BY on_time_delivery_rate
 
 
 
@@ -731,4 +765,330 @@ GROUP BY DATE_TRUNC('month', o.order_purchase_timestamp)
 ORDER BY month
 
 
---total orders by customer region 
+-- Checking routes that are most congested.
+SELECT
+CONCAT(s.seller_state, c.customer_state) AS route,
+COUNT(*) FILTER (WHERE o.order_delivered_customer_date <= o.order_estimated_delivery_date) * 100.0 / COUNT(*) AS on_time_delivery_rate,
+COUNT(*)
+FROM orders o
+LEFT JOIN order_items oi ON o.order_id = oi.order_id
+LEFT JOIN products p ON p.product_id = oi.product_id
+LEFT JOIN sellers s ON oi.seller_id = s.seller_id
+LEFT JOIN customers c ON c.customer_id = o.customer_id
+WHERE order_status = 'delivered'
+    AND order_delivered_customer_date IS NOT NULL
+    AND order_purchase_timestamp IS NOT NULL
+    AND DATE_TRUNC('month', o.order_purchase_timestamp) = '2018-03-01'
+
+GROUP BY route
+HAVING COUNT(*) >40
+ORDER BY on_time_delivery_rate
+
+
+SELECT
+CONCAT(s.seller_state, c.customer_state) AS route,
+COUNT(*) FILTER (WHERE o.order_delivered_customer_date <= o.order_estimated_delivery_date) * 100.0 / COUNT(*) AS on_time_delivery_rate,
+COUNT(*)
+FROM orders o
+LEFT JOIN order_items oi ON o.order_id = oi.order_id
+LEFT JOIN products p ON p.product_id = oi.product_id
+LEFT JOIN sellers s ON oi.seller_id = s.seller_id
+LEFT JOIN customers c ON c.customer_id = o.customer_id
+WHERE order_status = 'delivered'
+    AND order_delivered_customer_date IS NOT NULL
+    AND order_purchase_timestamp IS NOT NULL
+    AND DATE_TRUNC('month', o.order_purchase_timestamp) = '2018-01-01'
+
+GROUP BY route
+HAVING COUNT(*) >40
+ORDER BY on_time_delivery_rate
+
+
+
+
+
+--- On time delivery rate by recieving city
+
+
+SELECT
+c.customer_state,
+COUNT(*) FILTER (WHERE o.order_delivered_customer_date <= o.order_estimated_delivery_date) * 100.0 / COUNT(*) AS on_time_delivery_rate,
+COUNT(*)
+FROM orders o
+LEFT JOIN order_items oi ON oi.order_id = o.order_id
+LEFT JOIN products p ON p.product_id = oi.product_id
+LEFT JOIN customers c ON o.customer_id = c.customer_id
+LEFT JOIN sellers s ON s.seller_id = oi.seller_id
+WHERE order_status = 'delivered'
+    AND order_delivered_customer_date IS NOT NULL
+    AND order_purchase_timestamp IS NOT NULL
+    AND DATE_TRUNC('month', o.order_purchase_timestamp) = '2018-03-01'
+GROUP BY c.customer_state
+ORDER BY on_time_delivery_rate
+
+
+-- otd by customer state
+SELECT
+c.customer_state,
+DATE_TRUNC('month', o.order_delivered_carrier_date + (EXTRACT(DAY FROM (o.order_delivered_customer_date - o.order_delivered_carrier_date)) / 2) * INTERVAL '1 day') AS transit_month,
+CASE
+    WHEN AGE(o.order_delivered_customer_date, o.order_estimated_delivery_date) > INTERVAL '0 day' THEN 1
+    ELSE 0
+END AS late
+FROM orders o
+LEFT JOIN order_items oi ON oi.order_id = o.order_id
+LEFT JOIN products p ON p.product_id = oi.product_id
+LEFT JOIN customers c ON o.customer_id = c.customer_id
+LEFT JOIN sellers s ON s.seller_id = oi.seller_id
+WHERE order_status = 'delivered'
+    AND order_delivered_customer_date IS NOT NULL
+    AND order_purchase_timestamp IS NOT NULL
+
+
+
+-- otd by month but only SP
+SELECT
+DATE_TRUNC('month', o.order_delivered_carrier_date + (EXTRACT(DAY FROM (o.order_delivered_customer_date - o.order_delivered_carrier_date)) / 2) * INTERVAL '1 day') AS transit_month,
+CASE
+    WHEN AGE(o.order_delivered_customer_date, o.order_estimated_delivery_date) > INTERVAL '0 day' THEN 1
+    ELSE 0
+END AS late
+FROM orders o
+LEFT JOIN order_items oi ON oi.order_id = o.order_id
+LEFT JOIN products p ON p.product_id = oi.product_id
+LEFT JOIN customers c ON o.customer_id = c.customer_id
+LEFT JOIN sellers s ON s.seller_id = oi.seller_id
+WHERE order_status = 'delivered'
+    AND s.seller_state ='SP'
+    AND c.customer_state = 'SP'
+    AND order_delivered_customer_date IS NOT NULL
+    AND order_purchase_timestamp IS NOT NULL
+
+
+
+-- otd by month but only SP
+SELECT
+DATE_TRUNC('month', o.order_purchase_timestamp) AS purchase_month,
+CASE
+    WHEN AGE(o.order_delivered_customer_date, o.order_estimated_delivery_date) > INTERVAL '0 day' THEN 1
+    ELSE 0
+END AS late
+FROM orders o
+LEFT JOIN order_items oi ON oi.order_id = o.order_id
+LEFT JOIN products p ON p.product_id = oi.product_id
+LEFT JOIN customers c ON o.customer_id = c.customer_id
+LEFT JOIN sellers s ON s.seller_id = oi.seller_id
+WHERE order_status = 'delivered'
+    AND s.seller_state ='SP'
+    AND c.customer_state = 'SP'
+    AND order_delivered_customer_date IS NOT NULL
+    AND order_purchase_timestamp IS NOT NULL
+
+--otd but seller NOT SP, customer SP
+    SELECT
+s.seller_state,
+DATE_TRUNC('month', o.order_purchase_timestamp) AS purchase_month,
+CASE
+    WHEN AGE(o.order_delivered_customer_date, o.order_estimated_delivery_date) > INTERVAL '0 day' THEN 1
+    ELSE 0
+END AS late
+FROM orders o
+LEFT JOIN order_items oi ON oi.order_id = o.order_id
+LEFT JOIN products p ON p.product_id = oi.product_id
+LEFT JOIN customers c ON o.customer_id = c.customer_id
+LEFT JOIN sellers s ON s.seller_id = oi.seller_id
+WHERE order_status = 'delivered'
+    AND (NOT (s.seller_state = 'SP'))
+    AND c.customer_state = 'SP'
+    AND order_delivered_customer_date IS NOT NULL
+    AND order_purchase_timestamp IS NOT NULL
+
+
+
+
+    -- Estimate delivery length by month
+SELECT
+    DATE_TRUNC('month', o.order_purchase_timestamp) AS purchase_month,
+    AVG(EXTRACT(DAY FROM (o.order_estimated_delivery_date - o.order_purchase_timestamp))) AS avg_estimated_length
+FROM orders o
+WHERE order_status = 'delivered'
+    AND order_estimated_delivery_date IS NOT NULL
+    AND order_purchase_timestamp IS NOT NULL
+GROUP BY purchase_month
+ORDER BY purchase_month;
+
+
+
+
+-- What causes the late deliveries by location, inbound and outbound.
+-- For each row, create two rows 1 for inbound and 1 for outbound
+
+
+WITH outbound_states AS (
+    SELECT
+    DATE_TRUNC('month', o.order_purchase_timestamp) AS purchase_month,
+    CONCAT(s.seller_state,'_OUTBOUND') AS state,
+    CONCAT(c.customer_state,'_INBOUND') AS counterparty,
+    CASE
+    WHEN AGE(o.order_delivered_customer_date, o.order_estimated_delivery_date) > INTERVAL '0 day' THEN 1
+    ELSE 0
+    END AS late
+    FROM orders o
+    LEFT JOIN customers c ON o.customer_id = c.customer_id
+    LEFT JOIN order_items oi ON o.order_id = oi.order_id
+    LEFT JOIN sellers s ON oi.seller_id = s.seller_id
+),
+inbound_states AS (
+    SELECT
+    DATE_TRUNC('month', o.order_purchase_timestamp) AS purchase_month,
+    CONCAT(c.customer_state,'_INBOUND') AS state,
+    CONCAT(s.seller_state,'_OUTBOUND') AS counterparty,
+    CASE
+    WHEN AGE(o.order_delivered_customer_date, o.order_estimated_delivery_date) > INTERVAL '0 day' THEN 1
+    ELSE 0
+    END AS late
+    FROM orders o
+    LEFT JOIN customers c ON o.customer_id = c.customer_id
+    LEFT JOIN order_items oi ON o.order_id = oi.order_id
+    LEFT JOIN sellers s ON oi.seller_id = s.seller_id
+),
+combined_states AS (
+SELECT purchase_month, state, late, counterparty
+FROM outbound_states
+UNION ALL
+SELECT
+purchase_month, state, late, counterparty
+FROM inbound_states
+)
+SELECT
+state,
+AVG(late) AS late_rate,
+MODE() WITHIN GROUP (ORDER BY CASE WHEN late = 1 THEN counterparty ELSE NULL END) AS most_frequent_late_counterparty,
+MODE() WITHIN GROUP (ORDER BY CASE WHEN late = 0 THEN counterparty ELSE NULL END) AS most_frequent_ontime_counterparty,
+MODE() WITHIN GROUP (ORDER BY counterparty) AS most_frequent_counterparty
+FROM combined_states
+WHERE purchase_month = '2018-03-01 00:00:00'
+GROUP BY state
+ORDER BY late_rate;
+
+
+
+SELECT
+CONCAT(s.seller_state,'_OUTBOUND') AS state,
+COUNT(*)
+FROM orders o
+LEFT JOIN customers c ON o.customer_id = c.customer_id
+LEFT JOIN order_items oi ON o.order_id = oi.order_id
+LEFT JOIN sellers s ON oi.seller_id = s.seller_id
+GROUP BY state
+ORDER BY count
+
+
+-- tableau viz, need late rate by inbound state over time
+-- will make a slider 
+-- purchase date, late or not, inbound state for SP
+SELECT
+    c.customer_state,
+
+    o.order_purchase_timestamp,
+    CASE
+        WHEN AGE(o.order_delivered_customer_date, o.order_estimated_delivery_date) > INTERVAL '0 day' THEN 1
+        ELSE 0
+    END AS late,
+    'Brazil' AS country
+FROM orders o
+LEFT JOIN customers c ON o.customer_id = c.customer_id
+LEFT JOIN order_items oi ON o.order_id = oi.order_id
+LEFT JOIN sellers s ON oi.seller_id = s.seller_id
+WHERE order_status = 'delivered'
+    AND s.seller_state = 'SP'
+    AND order_delivered_customer_date IS NOT NULL
+    AND order_purchase_timestamp IS NOT NULL
+
+
+
+
+-- zip code dots
+SELECT
+    o.order_id,
+    g.geolocation_lat,
+    g.geolocation_lng,
+    o.order_purchase_timestamp,
+    CASE
+        WHEN AGE(o.order_delivered_customer_date, o.order_estimated_delivery_date) > INTERVAL '0 day' THEN 1
+        ELSE 0
+    END AS late
+FROM orders o
+LEFT JOIN customers c ON o.customer_id = c.customer_id
+LEFT JOIN order_items oi ON o.order_id = oi.order_id
+LEFT JOIN sellers s ON oi.seller_id = s.seller_id
+LEFT JOIN geolocation g ON c.customer_zip_code_prefix = g.geolocation_zip_code_prefix
+WHERE order_status = 'delivered'
+    AND s.seller_state = 'SP'
+    AND order_delivered_customer_date IS NOT NULL
+    AND order_purchase_timestamp IS NOT NULL
+
+
+
+
+-- Time to carrier by month
+SELECT
+    DATE_TRUNC('month', o.order_purchase_timestamp) AS purchase_month,
+    AVG(EXTRACT(DAY FROM (o.order_delivered_carrier_date - o.order_purchase_timestamp))) AS avg_time_to_carrier
+FROM orders o
+WHERE order_delivered_carrier_date IS NOT NULL
+    AND order_purchase_timestamp IS NOT NULL
+GROUP BY purchase_month
+ORDER BY purchase_month;
+
+
+-- outbound logistics check for places other than SP
+SELECT
+    DATE_TRUNC('month', o.order_purchase_timestamp) AS purchase_month,
+    AVG(CASE WHEN AGE(o.order_delivered_customer_date, o.order_estimated_delivery_date) > INTERVAL '0 day' THEN 1 ELSE 0 END) AS avg_late_rate,
+    COUNT(*)
+FROM orders o
+LEFT JOIN order_items oi ON o.order_id = oi.order_id
+LEFT JOIN sellers s ON oi.seller_id = s.seller_id
+LEFT JOIN customers c ON c.customer_id = o.customer_id
+WHERE order_status = 'delivered'
+    AND s.seller_state != 'SP'
+    AND c.customer_state != 'SP'
+    AND order_delivered_customer_date IS NOT NULL
+    AND order_estimated_delivery_date IS NOT NULL
+GROUP BY purchase_month
+ORDER BY purchase_month;
+
+-- Checking the case when it is outbound from SP -- increase is proportional.
+SELECT
+    DATE_TRUNC('month', o.order_purchase_timestamp) AS purchase_month,
+    AVG(CASE WHEN AGE(o.order_delivered_customer_date, o.order_estimated_delivery_date) > INTERVAL '0 day' THEN 1 ELSE 0 END) AS avg_late_rate,
+    COUNT(*)
+FROM orders o
+LEFT JOIN order_items oi ON o.order_id = oi.order_id
+LEFT JOIN sellers s ON oi.seller_id = s.seller_id
+LEFT JOIN customers c ON c.customer_id = o.customer_id
+WHERE order_status = 'delivered'
+    AND s.seller_state = 'SP'
+    AND c.customer_state != 'SP'
+    AND order_delivered_customer_date IS NOT NULL
+    AND order_estimated_delivery_date IS NOT NULL
+GROUP BY purchase_month
+ORDER BY purchase_month;
+
+-- Orders TO sao paulo
+SELECT
+    DATE_TRUNC('month', o.order_purchase_timestamp) AS purchase_month,
+    AVG(CASE WHEN AGE(o.order_delivered_customer_date, o.order_estimated_delivery_date) > INTERVAL '0 day' THEN 1 ELSE 0 END) AS avg_late_rate,
+    COUNT(*)
+FROM orders o
+LEFT JOIN order_items oi ON o.order_id = oi.order_id
+LEFT JOIN sellers s ON oi.seller_id = s.seller_id
+LEFT JOIN customers c ON c.customer_id = o.customer_id
+WHERE order_status = 'delivered'
+    AND s.seller_state != 'SP'
+    AND c.customer_state = 'SP'
+    AND order_delivered_customer_date IS NOT NULL
+    AND order_estimated_delivery_date IS NOT NULL
+GROUP BY purchase_month
+ORDER BY purchase_month;

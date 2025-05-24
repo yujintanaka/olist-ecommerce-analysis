@@ -225,7 +225,54 @@ LEFT JOIN geolocation gs ON s.seller_zip_code_prefix = gs.geolocation_zip_code_p
 
 
 
+--- Create view for machine learning to check high risk deliveries.
+-- we don't use month because we don't know if it is seasonal or supply chain shock
 
+-- route
+-- estimate length
+-- outbound state
+-- inbound state
+-- distance
+-- weight
+-- freight cost
+
+
+
+
+SELECT
+s.seller_state,
+c.customer_state,
+CONCAT(s.seller_state, c.customer_state) AS route,
+EXTRACT(DAY FROM (o.order_estimated_delivery_date - o.order_purchase_timestamp)) AS estimate_length,
+oi.freight_value AS freight_value,
+p.product_weight_g,
+oi.price AS price,
+(
+    6371 * -- Earth's radius in kilometers
+    2 * ASIN(
+        SQRT(
+            POWER(SIN(RADIANS(gs.geolocation_lat - gc.geolocation_lat) / 2), 2) +
+            COS(RADIANS(gc.geolocation_lat)) * 
+            COS(RADIANS(gs.geolocation_lat)) * 
+            POWER(SIN(RADIANS(gs.geolocation_lng - gc.geolocation_lng) / 2), 2)
+        )
+    )
+) AS distance,
+p.product_category_name as category,
+CASE
+    WHEN AGE(o.order_delivered_customer_date, o.order_estimated_delivery_date) > INTERVAL '0 day' THEN 1
+    ELSE 0
+END AS late
+FROM orders o
+LEFT JOIN customers c ON o.customer_id = c.customer_id
+LEFT JOIN order_items oi ON o.order_id = oi.order_id
+LEFT JOIN products p ON oi.product_id = p.product_id
+LEFT JOIN sellers s ON oi.seller_id = s.seller_id
+LEFT JOIN geolocation gc ON c.customer_zip_code_prefix = gc.geolocation_zip_code_prefix
+LEFT JOIN geolocation gs ON s.seller_zip_code_prefix = gs.geolocation_zip_code_prefix
+WHERE order_status = 'delivered'
+    AND order_estimated_delivery_date IS NOT NULL
+    AND order_purchase_timestamp IS NOT NULL
 
 
 
