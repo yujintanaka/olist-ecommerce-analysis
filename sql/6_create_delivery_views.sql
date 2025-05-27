@@ -221,25 +221,27 @@ LEFT JOIN order_items oi ON o.order_id = oi.order_id
 LEFT JOIN products p ON oi.product_id = p.product_id
 LEFT JOIN sellers s ON oi.seller_id = s.seller_id
 LEFT JOIN geolocation gc ON c.customer_zip_code_prefix = gc.geolocation_zip_code_prefix
-LEFT JOIN geolocation gs ON s.seller_zip_code_prefix = gs.geolocation_zip_code_prefix
+LEFT JOIN geolocation gs ON s.seller_zip_code_prefix = gs.geolocation_zip_code_prefix;
 
 
 
 --- Create view for machine learning to check high risk deliveries.
--- we don't use month because we don't know if it is seasonal or supply chain shock
-
--- route
--- estimate length
--- outbound state
--- inbound state
--- distance
--- weight
--- freight cost
-
-
-
+-- MACHINE LEARNING QUERY
 
 SELECT
+c.customer_unique_id,
+EXTRACT(DAY FROM (o.order_delivered_customer_date - order_estimated_delivery_date)) AS delay_time,
+(SELECT COUNT(DISTINCT seller_id) 
+ FROM order_items oi_sub 
+ WHERE oi_sub.order_id = o.order_id) AS unique_seller_count,
+EXTRACT(DAY FROM (oi.shipping_limit_date - o.order_purchase_timestamp)) AS delivery_time_buffer,
+(SELECT COUNT(DISTINCT product_id) 
+ FROM order_items oi_sub 
+ WHERE oi_sub.order_id = o.order_id) AS product_count,
+(SELECT SUM(p.product_weight_g) 
+ FROM order_items oi_sub 
+ LEFT JOIN products p ON oi_sub.product_id = p.product_id 
+ WHERE oi_sub.order_id = o.order_id) AS total_order_weight,
 s.seller_state,
 c.customer_state,
 CONCAT(s.seller_state, c.customer_state) AS route,
@@ -262,7 +264,15 @@ p.product_category_name as category,
 CASE
     WHEN AGE(o.order_delivered_customer_date, o.order_estimated_delivery_date) > INTERVAL '0 day' THEN 1
     ELSE 0
-END AS late
+END AS late,
+CASE
+    WHEN c.customer_state = s.seller_state THEN 1
+    ELSE 0
+END AS same_state,
+CASE
+    WHEN c.customer_city = s.seller_city THEN 1
+    ELSE 0
+END AS same_city
 FROM orders o
 LEFT JOIN customers c ON o.customer_id = c.customer_id
 LEFT JOIN order_items oi ON o.order_id = oi.order_id
@@ -272,8 +282,93 @@ LEFT JOIN geolocation gc ON c.customer_zip_code_prefix = gc.geolocation_zip_code
 LEFT JOIN geolocation gs ON s.seller_zip_code_prefix = gs.geolocation_zip_code_prefix
 WHERE order_status = 'delivered'
     AND order_estimated_delivery_date IS NOT NULL
+    AND order_delivered_customer_date IS NOT NULL
     AND order_purchase_timestamp IS NOT NULL
 
+
+
+--- get the rural or not rural for each unique customer ID
+SELECT
+c.customer_unique_id,
+gc.geolocation_lat AS latitude,
+gc.geolocation_lng AS longitude
+FROM customers c
+LEFT JOIN geolocation gc ON c.customer_zip_code_prefix = gc.geolocation_zip_code_prefix
+
+
+
+
+-- Seller Based Diagnosis - Why are some sellers worse than others?
+-- We will use Machine learning
+
+-- Number of sales
+-- most frequent month of sales
+-- seller location
+-- average product weight
+-- number of categories sold
+-- late delivery rate
+-- average freight cost
+-- average price of items sold
+-- multiple sellers
+
+
+WITH multiple_seller_orders AS (SELECT
+order_id,
+COUNT(DISTINCT seller_id) AS num_sellers
+FROM order_items
+GROUP BY order_id
+)
+SELECT
+mso.num_sellers,
+COUNT(*),
+COUNT(*) FILTER (WHERE o.order_delivered_customer_date <= o.order_estimated_delivery_date) * 100.0 / COUNT(*) AS on_time_delivery_rate
+FROM
+orders o
+LEFT JOIN multiple_seller_orders mso ON o.order_id = mso.order_id
+GROUP BY num_sellers
+
+
+SELECT
+*
+FROM orders o
+LEFT JOIN order_items oi ON o.order_id = oi.order_id
+WHERE oi.product_id IS NULL
+
+
+
+SELECT
+*
+FROM order_items
+WHERE seller_id IS NOT NULL
+
+
+-- does number of sellers involved change late rate?
+
+SELECT
+order_id
+CASE
+    WHEN AGE(o.order_delivered_customer_date, o.order_estimated_delivery_date) > INTERVAL '0 day' THEN 1
+    ELSE 0
+END AS late
+FROM order_items oi
+LEFT JOIN orders o ON oi.order_id = o.order_id
+
+
+--- does delivery time buffer matter?
+WITH delivery_time_buffer AS (SELECT
+o.order_id,
+EXTRACT(DAY FROM (oi.shipping_limit_date - o.order_purchase_timestamp)) AS delivery_time_buffer
+FROM orders o
+LEFT JOIN order_items oi ON o.order_id = oi.order_id
+)
+SELECT
+dtb.delivery_time_buffer,
+COUNT(*),
+COUNT(*) FILTER (WHERE o.order_delivered_customer_date <= o.order_estimated_delivery_date) * 100.0 / COUNT(*) AS on_time_delivery_rate
+FROM
+orders o
+LEFT JOIN delivery_time_buffer dtb ON o.order_id = dtb.order_id
+GROUP BY delivery_time_buffer
 
 
 
