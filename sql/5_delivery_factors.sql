@@ -989,7 +989,6 @@ ORDER BY count
 -- purchase date, late or not, inbound state for SP
 SELECT
     c.customer_state,
-
     o.order_purchase_timestamp,
     CASE
         WHEN AGE(o.order_delivered_customer_date, o.order_estimated_delivery_date) > INTERVAL '0 day' THEN 1
@@ -1092,3 +1091,12 @@ WHERE order_status = 'delivered'
     AND order_estimated_delivery_date IS NOT NULL
 GROUP BY purchase_month
 ORDER BY purchase_month;
+
+
+-- univariate analysis
+SELECT
+    
+    CASE
+    WHEN AGE(o.order_delivered_customer_date, o.order_estimated_delivery_date) > INTERVAL '0 day' THEN 1
+    ELSE 0
+    END AS late
