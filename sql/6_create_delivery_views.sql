@@ -101,7 +101,7 @@ FROM order_items oi
 LEFT JOIN payments p ON oi.order_id = p.order_id
 LEFT JOIN reviews r ON oi.order_id = r.order_id
 GROUP BY oi.product_id
-HAVING COUNT(r.review_id) > 5
+HAVING COUNT(r.review_id) > 10
 )
 SELECT
 ppsr.review_bucket,
